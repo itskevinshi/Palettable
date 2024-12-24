@@ -16,14 +16,18 @@ import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -44,7 +48,9 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
@@ -87,21 +93,13 @@ fun PhotoPickerScreen() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Button(onClick = {
-                singlePhotoPickerLauncher.launch(
-                    PickVisualMediaRequest(PickVisualMedia.ImageOnly)
-                )
-            }) {
-                Text("Select Single Image")
-            }
-
             selectedImageUri?.let { uri ->
                 Image(
                     painter = rememberAsyncImagePainter(model = uri),
                     contentDescription = "Selected image",
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 300.dp)
+                        .heightIn(max = 600.dp)
                         .padding(16.dp)
                 )
 
@@ -112,6 +110,29 @@ fun PhotoPickerScreen() {
 
             }
             GetRandomColors(imageBitmap = selectedImageUri?.let { uriToImageBitmap(context, it) })
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                Button(
+                    onClick = {
+                        singlePhotoPickerLauncher.launch(
+                            PickVisualMediaRequest(PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    modifier = Modifier.weight(1f).padding(end = 16.dp) // Note the padding
+                ) {
+                    Text("Select From Gallery")
+                }
+
+                Button(
+                    onClick = {
+                        singlePhotoPickerLauncher.launch(
+                            PickVisualMediaRequest(PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Open Camera")
+                }
+            }
         }
     }
 }
@@ -130,39 +151,64 @@ fun GetRandomColors(imageBitmap: ImageBitmap?) {
     val width = androidBitmap.width
     val height = androidBitmap.height
 
+    // Key the remember on the imageBitmap
+    var colors by remember(imageBitmap) {
+        mutableStateOf(generateRandomColors(androidBitmap, width, height))
+    }
+
+
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(8.dp)
+    ) {
+        colors.forEach { color ->
+            ColoredText(
+                hexColor = color,
+                text = color,
+                boxWidth = 100.dp
+            )
+        }
+    }
+    Button(onClick = {
+        colors = generateRandomColors(androidBitmap, width, height) // Update the state
+    }) {
+        Text("Generate New Palette")
+    }
+
+}
+
+private fun generateRandomColors(bitmap: android.graphics.Bitmap, width: Int, height: Int): List<String> {
     val randomPixels = List(5) {
         Pair(Random.nextInt(width), Random.nextInt(height))
     }
-
-    val colors = randomPixels.map { (x, y) ->
-        val pixel = androidBitmap.getPixel(x, y)
+    return randomPixels.map { (x, y) ->
+        val pixel = bitmap.getPixel(x, y)
         val red = android.graphics.Color.red(pixel)
         val green = android.graphics.Color.green(pixel)
         val blue = android.graphics.Color.blue(pixel)
         String.format("#%02X%02X%02X", red, green, blue)
     }
-
-    Column {
-        colors.forEachIndexed { index, color ->
-            ColoredText(hexColor = color, text = "Color ${index + 1}: $color")
-        }
-    }
 }
 
+
 @Composable
-fun ColoredText(hexColor: String, text: String) {
+fun ColoredText(hexColor: String, text: String, boxWidth: Dp) {
     val color = Color(hexColor.removePrefix("#").toLong(16) or 0xFF000000L)
     Box(
         modifier = Modifier
-            .padding(8.dp)
+            .width(boxWidth) // Set a fixed width for each box
+            .padding(4.dp) // Reduce padding between boxes
             .clip(RoundedCornerShape(16.dp))
             .background(color)
-            .padding(16.dp),
+            .padding(8.dp), // Reduce padding within the box
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            style = TextStyle(color = Color.White, fontSize = 16.sp)
+            style = TextStyle(color = Color.White, fontSize = 12.sp), // Smaller font size
+            textAlign = TextAlign.Center, // Center the text
+            modifier = Modifier.fillMaxWidth() // Make text fill the box width
         )
     }
 }
