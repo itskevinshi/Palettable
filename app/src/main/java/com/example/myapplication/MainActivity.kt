@@ -168,7 +168,6 @@ fun ColoredText(hexColor: String, text: String) {
     }
 }
 
-
 @SuppressLint("NewApi")
 @Preview(showBackground = true)
 @Composable
