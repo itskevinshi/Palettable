@@ -110,7 +110,6 @@ fun PhotoPickerScreen() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
 
-
             }
             GetRandomColors(imageBitmap = selectedImageUri?.let { uriToImageBitmap(context, it) })
         }
