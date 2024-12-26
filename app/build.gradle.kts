@@ -52,6 +52,10 @@ dependencies {
 
     implementation(libs.androidx.activity.compose.v193)
     implementation(libs.coil.compose)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.view.v131)
+    implementation(libs.androidx.navigation.compose)
+
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -3,17 +3,23 @@ package com.example.myapplication
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.annotation.RequiresApi
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.view.LifecycleCameraController
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -21,10 +27,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -53,84 +57,130 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import coil.compose.rememberAsyncImagePainter
 import com.example.myapplication.ui.theme.MyApplicationTheme
+import java.io.File
 import kotlin.random.Random
 
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.activity.ComponentActivity() {
     @SuppressLint("NewApi")
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            MyApplicationTheme {
-                PhotoPickerScreen()
+    private val cameraPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            setContent {
+                MyApplicationTheme {
+                    PhotoPickerScreen()
+                }
             }
         }
     }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        cameraPermission.launch(android.Manifest.permission.CAMERA)
+    }
 }
+
+
 
 @RequiresApi(Build.VERSION_CODES.Q)
 @Composable
 fun PhotoPickerScreen() {
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var showCamera by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val hasPermission = remember {
+        ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     val singlePhotoPickerLauncher = rememberLauncherForActivityResult(
         contract = PickVisualMedia(),
         onResult = { uri ->
-            selectedImageUri = uri
+            uri?.let {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                selectedImageUri = it
+            }
         }
     )
 
-    val context = LocalContext.current // Needed for takePersistableUriPermission() later
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState()), // Add this line
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            selectedImageUri?.let { uri ->
-                Image(
-                    painter = rememberAsyncImagePainter(model = uri),
-                    contentDescription = "Selected image",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 600.dp)
-                        .padding(16.dp)
+        if (showCamera) {
+            if (hasPermission) {
+                CameraPreview(
+                    onDismiss = { showCamera = false },
+                    onImageCaptured = { uri ->
+                        selectedImageUri = uri
+                        showCamera = false
+                    }
                 )
-
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-
             }
-            GetRandomColors(imageBitmap = selectedImageUri?.let { uriToImageBitmap(context, it) })
-            Row(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                Button(
-                    onClick = {
-                        singlePhotoPickerLauncher.launch(
-                            PickVisualMediaRequest(PickVisualMedia.ImageOnly)
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                selectedImageUri?.let { uri ->
+                    Image(
+                        painter = rememberAsyncImagePainter(model = uri),
+                        contentDescription = "Selected image",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 600.dp)
+                            .padding(16.dp)
+                    )
+
+                    try {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
                         )
-                    },
-                    modifier = Modifier.weight(1f).padding(end = 16.dp) // Note the padding
-                ) {
-                    Text("Select From Gallery")
+                    } catch (e: SecurityException) {
+                        Log.e("PhotoPicker", "Failed to take persistable permission: ${e.message}")
+                    }
                 }
 
-                Button(
-                    onClick = {
-                        singlePhotoPickerLauncher.launch(
-                            PickVisualMediaRequest(PickVisualMedia.ImageOnly)
-                        )
-                    },
-                    modifier = Modifier.weight(1f)
+                GetRandomColors(imageBitmap = selectedImageUri?.let { uriToImageBitmap(context, it) })
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
                 ) {
-                    Text("Open Camera")
+                    Button(
+                        onClick = {
+                            singlePhotoPickerLauncher.launch(
+                                PickVisualMediaRequest(PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 16.dp)
+                    ) {
+                        Text("Select From Gallery")
+                    }
+                    Button(
+                        onClick = { showCamera = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Open Camera")
+                    }
                 }
             }
         }
@@ -212,6 +262,67 @@ fun ColoredText(hexColor: String, text: String, boxWidth: Dp) {
         )
     }
 }
+
+@Composable
+fun CameraPreview(onDismiss: () -> Unit, onImageCaptured: (Uri) -> Unit) {
+    val context = LocalContext.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val cameraController = remember {
+        LifecycleCameraController(context).apply {
+            bindToLifecycle(lifecycleOwner)
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                PreviewView(ctx).apply {
+                    scaleType = PreviewView.ScaleType.FILL_START
+                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                    controller = cameraController
+                }
+            },
+            onRelease = { cameraController.unbind() }
+        )
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Button(onClick = {
+                val photoFile = File(
+                    context.cacheDir,
+                    "photo_${System.currentTimeMillis()}.jpg"
+                )
+                val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+
+                cameraController.takePicture(
+                    outputOptions,
+                    ContextCompat.getMainExecutor(context),
+                    object : ImageCapture.OnImageSavedCallback {
+                        override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                            val savedUri = Uri.fromFile(photoFile)
+                            onImageCaptured(savedUri)
+                        }
+
+                        override fun onError(exc: ImageCaptureException) {
+                            // error handling wahtever
+                        }
+                    }
+                )
+            }) {
+                Text("Take Photo")
+            }
+            Button(onClick = onDismiss) {
+                Text("Close Camera")
+            }
+        }
+    }
+}
+
 
 @SuppressLint("NewApi")
 @Preview(showBackground = true)
