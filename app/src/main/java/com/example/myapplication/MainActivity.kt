@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -22,6 +23,7 @@ import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -239,21 +241,28 @@ private fun generateRandomColors(bitmap: android.graphics.Bitmap, width: Int, he
 
 @Composable
 fun ColoredText(hexColor: String, text: String, boxWidth: Dp) {
-    val color = Color(hexColor.removePrefix("#").toLong(16) or 0xFF000000L)
+    val context = LocalContext.current
+    val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+
     Box(
         modifier = Modifier
-            .width(boxWidth) // Set a fixed width for each box
-            .padding(4.dp) // Reduce padding between boxes
+            .width(boxWidth)
+            .padding(4.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(color)
-            .padding(8.dp), // Reduce padding within the box
+            .background(Color(hexColor.removePrefix("#").toLong(16) or 0xFF000000L))
+            .padding(8.dp)
+            .clickable {
+                val clip = android.content.ClipData.newPlainText("Color Code", hexColor)
+                clipboardManager.setPrimaryClip(clip)
+                Toast.makeText(context, "Color code copied!", Toast.LENGTH_SHORT).show()
+            },
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            style = TextStyle(color = Color.White, fontSize = 12.sp), // Smaller font size
-            textAlign = TextAlign.Center, // Center the text
-            modifier = Modifier.fillMaxWidth() // Make text fill the box width
+            style = TextStyle(color = Color.White, fontSize = 12.sp),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
