@@ -244,12 +244,18 @@ fun ColoredText(hexColor: String, text: String, boxWidth: Dp) {
     val context = LocalContext.current
     val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
 
+    val color = Color(hexColor.removePrefix("#").toLong(16) or 0xFF000000L)
+    // Calculate luminance
+    val luminance = (0.299f * color.red + 0.587f * color.green + 0.114f * color.blue)
+    // Choose white or black text based on background brightness
+    val textColor = if (luminance > 0.5f) Color.Black else Color.White
+
     Box(
         modifier = Modifier
             .width(boxWidth)
             .padding(4.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(hexColor.removePrefix("#").toLong(16) or 0xFF000000L))
+            .background(color)
             .padding(8.dp)
             .clickable {
                 val clip = android.content.ClipData.newPlainText("Color Code", hexColor)
@@ -260,12 +266,13 @@ fun ColoredText(hexColor: String, text: String, boxWidth: Dp) {
     ) {
         Text(
             text = text,
-            style = TextStyle(color = Color.White, fontSize = 12.sp),
+            style = TextStyle(color = textColor, fontSize = 12.sp),
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )
     }
 }
+
 
 @Composable
 fun CameraPreview(onDismiss: () -> Unit, onImageCaptured: (Uri) -> Unit) {
