@@ -8,7 +8,6 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -29,21 +28,36 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Button
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,8 +79,11 @@ import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
 import com.example.myapplication.ui.theme.MyApplicationTheme
+import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.random.Random
+import androidx.compose.foundation.layout.size
+
 
 
 class MainActivity : androidx.activity.ComponentActivity() {
@@ -90,15 +107,40 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
 }
 
-
-
+@OptIn(ExperimentalMaterial3Api::class)
 @RequiresApi(Build.VERSION_CODES.Q)
 @Composable
 fun PhotoPickerScreen() {
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var showCamera by remember { mutableStateOf(false) }
+    var expandedFavorites by remember { mutableStateOf(false) }
+    var expandedHistory by remember { mutableStateOf(false) }
+    var paletteHistory by remember { mutableStateOf<List<List<String>>>(emptyList()) }
+    var currentPalette by remember { mutableStateOf<List<String>>(emptyList()) }
 
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    // Function to handle new image selection and generate palette
+    val handleNewImage: (Uri) -> Unit = { uri ->
+        selectedImageUri = uri
+        // Clear history when new image is loaded
+        paletteHistory = emptyList()
+        currentPalette = emptyList()
+        // Generate new palette immediately for the new image
+        val newImageBitmap = uriToImageBitmap(context, uri)
+        newImageBitmap?.let { bitmap ->
+            val newPalette = generateRandomColors(
+                bitmap.asAndroidBitmap(),
+                bitmap.width,
+                bitmap.height
+            )
+            currentPalette = newPalette
+            paletteHistory = listOf(newPalette)
+        }
+    }
+
     val hasPermission = remember {
         ContextCompat.checkSelfPermission(
             context,
@@ -114,69 +156,174 @@ fun PhotoPickerScreen() {
                     it,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
-                selectedImageUri = it
+                handleNewImage(it)
             }
         }
     )
 
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Spacer(Modifier.height(12.dp))
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-        if (showCamera) {
-            if (hasPermission) {
-                CameraPreview(
-                    onDismiss = { showCamera = false },
-                    onImageCaptured = { uri ->
-                        selectedImageUri = uri
-                        showCamera = false
-                    }
+                // Favorites Section
+                NavigationDrawerItem(
+                    label = { Text("Favorites") },
+                    selected = expandedFavorites,
+                    onClick = { expandedFavorites = !expandedFavorites }
                 )
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                selectedImageUri?.let { uri ->
-                    Image(
-                        painter = rememberAsyncImagePainter(model = uri),
-                        contentDescription = "Selected image",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 9999.dp)
-                            .padding(16.dp)
-                            .clip(RoundedCornerShape(16.dp)),
-                        contentScale = ContentScale.Crop
-                    )
+                if (expandedFavorites) {
+                    Column(Modifier.padding(start = 16.dp)) {
+                        NavigationDrawerItem(
+                            label = { Text("Favorite Image 1") },
+                            selected = false,
+                            onClick = { /* Handle click */ }
+                        )
+                        NavigationDrawerItem(
+                            label = { Text("Favorite Image 2") },
+                            selected = false,
+                            onClick = { /* Handle click */ }
+                        )
+                        NavigationDrawerItem(
+                            label = { Text("Favorite Image 3") },
+                            selected = false,
+                            onClick = { /* Handle click */ }
+                        )
+                    }
                 }
 
-                GetRandomColors(imageBitmap = selectedImageUri?.let { uriToImageBitmap(context, it) })
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            singlePhotoPickerLauncher.launch(
-                                PickVisualMediaRequest(PickVisualMedia.ImageOnly)
+                // History Section
+                NavigationDrawerItem(
+                    label = { Text("History") },
+                    selected = expandedHistory,
+                    onClick = { expandedHistory = !expandedHistory }
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                if (expandedHistory) {
+                    Column(
+                        Modifier.padding(start = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        paletteHistory.asReversed().forEachIndexed { index, palette ->
+                            NavigationDrawerItem(
+                                label = {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        palette.forEach { colorHex ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(Color.White)
+                                                    .padding(1.dp)
+                                                    .clip(RoundedCornerShape(11.dp))
+                                                    .background(Color(colorHex.removePrefix("#").toLong(16) or 0xFF000000L))
+                                            )
+                                        }
+                                    }
+                                },
+                                selected = palette == currentPalette,
+                                onClick = { currentPalette = palette }
                             )
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 16.dp)
-                    ) {
-                        Text("Upload Image")
+                        }
                     }
-                    Button(
-                        onClick = { showCamera = true },
-                        modifier = Modifier.weight(1f)
+                }
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(
+                            text = "Palettable",
+                            style = TextStyle(fontSize = 20.sp)
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            scope.launch { drawerState.open() }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Menu,
+                                contentDescription = "Menu"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors()
+                )
+            },
+            modifier = Modifier.fillMaxSize()
+        ) { innerPadding ->
+            if (showCamera) {
+                if (hasPermission) {
+                    CameraPreview(
+                        onDismiss = { showCamera = false },
+                        onImageCaptured = { uri ->
+                            showCamera = false
+                            handleNewImage(uri)
+                        }
+                    )
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    selectedImageUri?.let { uri ->
+                        Image(
+                            painter = rememberAsyncImagePainter(model = uri),
+                            contentDescription = "Selected image",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 9999.dp)
+                                .padding(16.dp)
+                                .clip(RoundedCornerShape(16.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+
+                    GetRandomColors(
+                        imageBitmap = selectedImageUri?.let {
+                            uriToImageBitmap(context, it)
+                        },
+                        onNewPalette = { newPalette ->
+                            paletteHistory = (paletteHistory + listOf(newPalette)).takeLast(5)
+                            currentPalette = newPalette
+                        },
+                        currentPalette = currentPalette
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
                     ) {
-                        Text("Open Camera")
+                        Button(
+                            onClick = {
+                                singlePhotoPickerLauncher.launch(
+                                    PickVisualMediaRequest(PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 16.dp)
+                        ) {
+                            Text("Upload Image")
+                        }
+                        Button(
+                            onClick = { showCamera = true },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Open Camera")
+                        }
                     }
                 }
             }
@@ -191,18 +338,20 @@ fun uriToImageBitmap(context: Context, imageUri: Uri): ImageBitmap? {
 }
 
 @Composable
-fun GetRandomColors(imageBitmap: ImageBitmap?) {
+fun GetRandomColors(
+    imageBitmap: ImageBitmap?,
+    onNewPalette: (List<String>) -> Unit,
+    currentPalette: List<String>
+) {
     if (imageBitmap == null) return
 
     val androidBitmap = imageBitmap.asAndroidBitmap()
     val width = androidBitmap.width
     val height = androidBitmap.height
 
-    // Key the remember on the imageBitmap
     var colors by remember(imageBitmap) {
-        mutableStateOf(generateRandomColors(androidBitmap, width, height))
+        mutableStateOf(currentPalette.ifEmpty { generateRandomColors(androidBitmap, width, height) })
     }
-
 
     Row(
         modifier = Modifier
@@ -217,13 +366,15 @@ fun GetRandomColors(imageBitmap: ImageBitmap?) {
             )
         }
     }
+
     Button(onClick = {
-        colors = generateRandomColors(androidBitmap, width, height) // Update the state
+        colors = generateRandomColors(androidBitmap, width, height)
+        onNewPalette(colors)
     }) {
         Text("Generate New Palette")
     }
-
 }
+
 
 private fun generateRandomColors(bitmap: android.graphics.Bitmap, width: Int, height: Int): List<String> {
     val randomPixels = List(5) {
