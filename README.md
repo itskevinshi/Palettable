@@ -7,6 +7,7 @@ This simple Android application allows you to generate a random color palette fr
 * **Image Upload:** Select an image from your device's gallery.
 * **Camera Integration:** Capture a photo directly within the app.
 * **Random Palette Generation:** Extracts five random colors from the chosen image.
+* **Palette History:** The last five palettes generated from an image are saved and can be loaded back into the app.
 * **Color Code Display:** Presents the generated palette with hex color codes.
 * **Copy to Clipboard:** Easily copy individual color codes to your clipboard with a single tap.
 * **Palette Regeneration:** Generate a new palette from the same image with a click of a button.
