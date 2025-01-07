@@ -34,12 +34,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DrawerValue
@@ -54,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,14 +81,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.datastore.preferences.core.edit
 import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
 import com.example.myapplication.ui.theme.MyApplicationTheme
+import com.example.myapplication.utils.FAVORITE_PALETTES_KEY
+import com.example.myapplication.utils.THEME_KEY
+import com.example.myapplication.utils.dataStore
+import com.google.gson.Gson
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.random.Random
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.filled.Star
 
 
 class MainActivity : androidx.activity.ComponentActivity() {
@@ -93,7 +102,17 @@ class MainActivity : androidx.activity.ComponentActivity() {
     ) { granted ->
         if (granted) {
             setContent {
-                MyApplicationTheme {
+                var isDarkTheme by remember { mutableStateOf(false) }
+
+                LaunchedEffect(Unit) {
+                    dataStore.data.map { preferences ->
+                        preferences[THEME_KEY] ?: false
+                    }.collect { theme ->
+                        isDarkTheme = theme
+                    }
+                }
+
+                MyApplicationTheme(darkTheme = isDarkTheme) {
                     PhotoPickerScreen()
                 }
             }
@@ -118,10 +137,23 @@ fun PhotoPickerScreen() {
     var paletteHistory by remember { mutableStateOf<List<List<String>>>(emptyList()) }
     var currentPalette by remember { mutableStateOf<List<String>>(emptyList()) }
     var favoritePalettes by remember { mutableStateOf<List<List<String>>>(emptyList()) }
+    var isDarkTheme by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        loadFavoritePalettes(context) { loadedPalettes ->
+            favoritePalettes = loadedPalettes
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        context.dataStore.data.map { preferences ->
+            preferences[THEME_KEY] ?: false
+        }.collect { isDarkTheme = it }
+    }
 
     // Function to handle new image selection and generate palette
     val handleNewImage: (Uri) -> Unit = { uri ->
@@ -164,9 +196,13 @@ fun PhotoPickerScreen() {
 
     val toggleFavorite: (List<String>) -> Unit = { palette: List<String> ->
         favoritePalettes = if (favoritePalettes.contains(palette)) {
-            favoritePalettes - listOf(palette) // Remove the specific palette
+            favoritePalettes - listOf(palette)
         } else {
-            favoritePalettes + listOf(palette) // Add the new palette
+            favoritePalettes + listOf(palette)
+        }
+
+        scope.launch {
+            saveFavoritePalettes(context, favoritePalettes)
         }
     }
 
@@ -175,80 +211,98 @@ fun PhotoPickerScreen() {
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
-                Spacer(Modifier.height(12.dp))
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Spacer(Modifier.height(12.dp))
 
-                // Favorites Section
-                NavigationDrawerItem(
-                    label = { Text("Favorites") },
-                    selected = expandedFavorites,
-                    onClick = { expandedFavorites = !expandedFavorites }
-                )
-                if (expandedFavorites) {
-                    Column(Modifier.padding(start = 16.dp)) {
-                        favoritePalettes.forEach { palette ->
-                            NavigationDrawerItem(
-                                label = {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        palette.forEach { colorHex ->
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(24.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .background(Color.White)
-                                                    .padding(1.dp)
-                                                    .clip(RoundedCornerShape(11.dp))
-                                                    .background(Color(colorHex.removePrefix("#").toLong(16) or 0xFF000000L))
-                                            )
+                    // Favorites Section
+                    NavigationDrawerItem(
+                        label = { Text("Favorites") },
+                        selected = expandedFavorites,
+                        onClick = { expandedFavorites = !expandedFavorites }
+                    )
+                    if (expandedFavorites) {
+                        Column(Modifier.padding(start = 16.dp)) {
+                            favoritePalettes.forEach { palette ->
+                                NavigationDrawerItem(
+                                    label = {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            palette.forEach { colorHex ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(Color.White)
+                                                        .padding(1.dp)
+                                                        .clip(RoundedCornerShape(11.dp))
+                                                        .background(Color(colorHex.removePrefix("#").toLong(16) or 0xFF000000L))
+                                                )
+                                            }
                                         }
-                                    }
-                                },
-                                selected = false,
-                                onClick = { currentPalette = palette }
-                            )
+                                    },
+                                    selected = false,
+                                    onClick = { currentPalette = palette }
+                                )
+                            }
                         }
                     }
-                }
 
-                // History Section
-                NavigationDrawerItem(
-                    label = { Text("History") },
-                    selected = expandedHistory,
-                    onClick = { expandedHistory = !expandedHistory }
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                if (expandedHistory) {
-                    Column(
-                        Modifier.padding(start = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        paletteHistory.asReversed().forEachIndexed { index, palette ->
-                            NavigationDrawerItem(
-                                label = {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        palette.forEach { colorHex ->
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(24.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .background(Color.White)
-                                                    .padding(1.dp)
-                                                    .clip(RoundedCornerShape(11.dp))
-                                                    .background(Color(colorHex.removePrefix("#").toLong(16) or 0xFF000000L))
-                                            )
+                    // History Section
+                    NavigationDrawerItem(
+                        label = { Text("History") },
+                        selected = expandedHistory,
+                        onClick = { expandedHistory = !expandedHistory }
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (expandedHistory) {
+                        Column(
+                            Modifier.padding(start = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            paletteHistory.asReversed().forEachIndexed { index, palette ->
+                                NavigationDrawerItem(
+                                    label = {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            palette.forEach { colorHex ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(Color.White)
+                                                        .padding(1.dp)
+                                                        .clip(RoundedCornerShape(11.dp))
+                                                        .background(Color(colorHex.removePrefix("#").toLong(16) or 0xFF000000L))
+                                                )
+                                            }
                                         }
-                                    }
-                                },
-                                selected = palette == currentPalette,
-                                onClick = { currentPalette = palette }
-                            )
+                                    },
+                                    selected = palette == currentPalette,
+                                    onClick = { currentPalette = palette }
+                                )
+                            }
                         }
                     }
+
+                    NavigationDrawerItem(
+                        label = { Text(if (isDarkTheme) "Switch to Light Theme" else "Switch to Dark Theme") },
+                        selected = isDarkTheme,
+                        onClick = {
+                            isDarkTheme = !isDarkTheme
+                            scope.launch {
+                                context.dataStore.edit { preferences ->
+                                    preferences[THEME_KEY] = isDarkTheme
+                                }
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -358,6 +412,27 @@ fun uriToImageBitmap(context: Context, imageUri: Uri): ImageBitmap? {
     return bitmap?.asImageBitmap()
 }
 
+suspend fun saveFavoritePalettes(context: Context, palettes: List<List<String>>) {
+    val gson = Gson()
+    val jsonString = gson.toJson(palettes)
+
+    context.dataStore.edit { preferences ->
+        preferences[FAVORITE_PALETTES_KEY] = jsonString
+    }
+}
+
+suspend fun loadFavoritePalettes(context: Context, onLoaded: (List<List<String>>) -> Unit) {
+    val gson = Gson()
+    context.dataStore.data
+        .map { preferences ->
+            val jsonString = preferences[FAVORITE_PALETTES_KEY] ?: "[]"
+            gson.fromJson(jsonString, Array<Array<String>>::class.java).map { it.toList() }
+        }
+        .collect { palettes ->
+            onLoaded(palettes)
+        }
+}
+
 @Composable
 fun PaletteRow(palette: List<String>, isFavorited: Boolean, onToggleFavorite: () -> Unit) {
     Row(
@@ -365,12 +440,13 @@ fun PaletteRow(palette: List<String>, isFavorited: Boolean, onToggleFavorite: ()
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = if (isFavorited) Icons.Filled.Star else Icons.Default.Star,
+            imageVector = if (isFavorited) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
             contentDescription = "Favorite",
             modifier = Modifier
+                .padding(start = 12.dp)
                 .size(24.dp)
                 .clickable { onToggleFavorite() },
-            tint = if (isFavorited) Color.Yellow else Color.Gray
+            tint = if (isFavorited) Color.Red else Color.Gray
         )
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState())
