@@ -83,7 +83,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.random.Random
 import androidx.compose.foundation.layout.size
-
+import androidx.compose.material.icons.filled.Star
 
 
 class MainActivity : androidx.activity.ComponentActivity() {
@@ -117,6 +117,7 @@ fun PhotoPickerScreen() {
     var expandedHistory by remember { mutableStateOf(false) }
     var paletteHistory by remember { mutableStateOf<List<List<String>>>(emptyList()) }
     var currentPalette by remember { mutableStateOf<List<String>>(emptyList()) }
+    var favoritePalettes by remember { mutableStateOf<List<List<String>>>(emptyList()) }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -161,6 +162,15 @@ fun PhotoPickerScreen() {
         }
     )
 
+    val toggleFavorite: (List<String>) -> Unit = { palette: List<String> ->
+        favoritePalettes = if (favoritePalettes.contains(palette)) {
+            favoritePalettes - listOf(palette) // Remove the specific palette
+        } else {
+            favoritePalettes + listOf(palette) // Add the new palette
+        }
+    }
+
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -175,21 +185,30 @@ fun PhotoPickerScreen() {
                 )
                 if (expandedFavorites) {
                     Column(Modifier.padding(start = 16.dp)) {
-                        NavigationDrawerItem(
-                            label = { Text("Favorite Image 1") },
-                            selected = false,
-                            onClick = { /* Handle click */ }
-                        )
-                        NavigationDrawerItem(
-                            label = { Text("Favorite Image 2") },
-                            selected = false,
-                            onClick = { /* Handle click */ }
-                        )
-                        NavigationDrawerItem(
-                            label = { Text("Favorite Image 3") },
-                            selected = false,
-                            onClick = { /* Handle click */ }
-                        )
+                        favoritePalettes.forEach { palette ->
+                            NavigationDrawerItem(
+                                label = {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        palette.forEach { colorHex ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(Color.White)
+                                                    .padding(1.dp)
+                                                    .clip(RoundedCornerShape(11.dp))
+                                                    .background(Color(colorHex.removePrefix("#").toLong(16) or 0xFF000000L))
+                                            )
+                                        }
+                                    }
+                                },
+                                selected = false,
+                                onClick = { currentPalette = palette }
+                            )
+                        }
                     }
                 }
 
@@ -298,7 +317,9 @@ fun PhotoPickerScreen() {
                             paletteHistory = (paletteHistory + listOf(newPalette)).takeLast(5)
                             currentPalette = newPalette
                         },
-                        currentPalette = currentPalette
+                        currentPalette = currentPalette,
+                        favoritePalettes = favoritePalettes,
+                        onToggleFavorite = toggleFavorite
                     )
 
                     Row(
@@ -338,10 +359,36 @@ fun uriToImageBitmap(context: Context, imageUri: Uri): ImageBitmap? {
 }
 
 @Composable
+fun PaletteRow(palette: List<String>, isFavorited: Boolean, onToggleFavorite: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = if (isFavorited) Icons.Filled.Star else Icons.Default.Star,
+            contentDescription = "Favorite",
+            modifier = Modifier
+                .size(24.dp)
+                .clickable { onToggleFavorite() },
+            tint = if (isFavorited) Color.Yellow else Color.Gray
+        )
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState())
+        ) {
+            palette.forEach { colorHex ->
+                ColoredText(hexColor = colorHex, text = colorHex, boxWidth = 100.dp)
+            }
+        }
+    }
+}
+
+@Composable
 fun GetRandomColors(
     imageBitmap: ImageBitmap?,
     onNewPalette: (List<String>) -> Unit,
-    currentPalette: List<String>
+    currentPalette: List<String>,
+    favoritePalettes: List<List<String>>,
+    onToggleFavorite: (List<String>) -> Unit
 ) {
     if (imageBitmap == null) return
 
@@ -353,19 +400,11 @@ fun GetRandomColors(
         mutableStateOf(currentPalette.ifEmpty { generateRandomColors(androidBitmap, width, height) })
     }
 
-    Row(
-        modifier = Modifier
-            .horizontalScroll(rememberScrollState())
-            .padding(8.dp)
-    ) {
-        colors.forEach { color ->
-            ColoredText(
-                hexColor = color,
-                text = color,
-                boxWidth = 100.dp
-            )
-        }
-    }
+    PaletteRow(
+        palette = colors,
+        isFavorited = favoritePalettes.contains(colors),
+        onToggleFavorite = { onToggleFavorite(colors) }
+    )
 
     Button(onClick = {
         colors = generateRandomColors(androidBitmap, width, height)
@@ -374,6 +413,7 @@ fun GetRandomColors(
         Text("Generate New Palette")
     }
 }
+
 
 
 private fun generateRandomColors(bitmap: android.graphics.Bitmap, width: Int, height: Int): List<String> {

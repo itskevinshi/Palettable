@@ -55,6 +55,9 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.view.v131)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.datastore)
+    implementation(libs.androidx.datastore.preferences)
+
 
 
     testImplementation(libs.junit)
