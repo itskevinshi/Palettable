@@ -225,7 +225,7 @@ fun PhotoPickerScreen() {
                     )
                     if (expandedFavorites) {
                         Column(Modifier.padding(start = 16.dp)) {
-                            favoritePalettes.forEach { palette ->
+                            favoritePalettes.asReversed().forEach { palette ->
                                 NavigationDrawerItem(
                                     label = {
                                         Row(
